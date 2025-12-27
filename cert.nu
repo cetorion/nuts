@@ -6,11 +6,6 @@ def main [
   --smime(-s)
   --delete(-d)
 ] {
-  let default = {
-    email: 'nero@asgard.id'
-    pass: 'testify'
-  }
-
   if $delete {
     let ask = (input $"Delete existing '($base)' ? \(y/n\): ")
     if ($ask == 'y') {
@@ -24,7 +19,8 @@ def main [
   if ($email == null) or ($email == "") {
     $email = (input "Enter email: ")
     if ($email == "") {
-      $email = $default.email
+      print "No email provided"
+      exit 1
     }
   }
 
@@ -32,7 +28,11 @@ def main [
   if ($pass == null) or ($pass == "") {
     $pass = (input "Enter PFX password: ")
     if ($pass == "") {
-      $pass = $default.pass
+      print "PFX file will be unencrypted"
+      let ask = (input "Continue? \(y/n\): ")
+      if ($ask != 'y') {
+        exit 0
+      }
     }
   }
 
