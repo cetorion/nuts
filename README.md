@@ -1,0 +1,2 @@
+# nuts
+Nushell helper snippets
