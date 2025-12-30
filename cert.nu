@@ -1,68 +1,45 @@
-def main [
-  --base (-b): string = "./certs"
-  --pass (-p): string
-  --email (-e): string
-  --ca(-c)
-  --smime(-s)
-  --delete(-d)
-] {
-  if $delete {
-    let ask = (input $"Delete existing '($base)' ? \(y/n\): ")
-    if ($ask == 'y') {
-      rm -rf $base
-    } else {
-      print "Skipping ..."
-    }
-  }
-
-  mut email = $email
-  if ($email == null) or ($email == "") {
-    $email = (input "Enter email: ")
-    if ($email == "") {
-      print "No email provided"
-      exit 1
-    }
-  }
-
-  mut pass = $pass
-  if ($pass == null) or ($pass == "") {
-    $pass = (input "Enter PFX password: ")
-    if ($pass == "") {
-      print "PFX file will be unencrypted"
-      let ask = (input "Continue? \(y/n\): ")
-      if ($ask != 'y') {
-        exit 0
-      }
-    }
-  }
-
-  let dome = ($email | split row '@' | last | split row '.' | first | str capitalize)
-  let name = ($email | split row '@' | first | str capitalize)
-  let days = 3650
-
-  if not ($base | path exists) {
-    mkdir $base
-  }
-  
-  if $ca {
-    ca $base $dome
-  }
-  
-  if $smime {
-    smime $base $email $pass
-  }
-
+# Const defaults
+const base = 'certs'
+const conf = {
+  ca: ca
+  sm: sm
+  key: key.pem
+  crt: crt.pem
+  csr: csr.pem
+  pfx: crt.p12
 }
 
-def ca [base: string dome: string] {
-  let ca = $"($base)/ca"
-  mkdir $ca
-   
-  let ca_cnf = $"($ca)/ca.cnf"
-  let ca_key = $"($ca)/ca.key"
-  let ca_crt = $"($ca)/ca.crt"
+# Create paths
+def pts [stem: string -c] {
+  let dir = [$env.home $base $stem] | path join
+  
+  if $c {
+    try {
+      mkdir $dir
+    } catch {|e| 
+      print $'error: ($e.exit_code?)'
+      exit $e.exit_code? | default 1
+    }
+  }
 
-  let cnf = $"
+  {
+    cnf: ($dir | path join 'cnf')
+    key: ($dir | path join $conf.key)
+    crt: ($dir | path join $conf.crt)
+    csr: ($dir | path join $conf.csr)
+    pfx: ($dir | path join $conf.pfx)
+  }
+}
+
+# Create CA certificate
+export def ca [--name(-n): string] {
+  if $name == null {
+    error make {msg: "required flag --name"}
+  }
+  
+  let ca = pts $conf.ca -c
+
+  let tpl = $"
     [ req ]
     default_md         = sha256
     default_days       = 3650
@@ -78,8 +55,8 @@ def ca [base: string dome: string] {
 
     [ dn ]
     O  = Personal
-    CN = ($dome)
-    OU = ($dome)
+    CN = ($name)
+    OU = ($name)
     
 
     [ v3_ca ]
@@ -89,32 +66,36 @@ def ca [base: string dome: string] {
     keyUsage = critical, digitalSignature, cRLSign, keyCertSign
     nsCertType = sslCA, emailCA
   "
-  $cnf | save -f $ca_cnf
+  $tpl | save -f $ca.cnf
 
-  openssl genpkey -algorithm RSA -out $ca_key -pkeyopt rsa_keygen_bits:4096
-  openssl req -x509 -new -key $ca_key -out $ca_crt -config $ca_cnf -extensions v3_ca
+  # Create CA
+  openssl genpkey -algorithm RSA -out $ca.key -pkeyopt rsa_keygen_bits:4096
+  openssl req -x509 -new -key $ca.key -out $ca.crt -config $ca.cnf -extensions v3_ca
+
+  # Clean up
+  rm $ca.cnf
 }
 
-
-def smime [base: string email: string  pass?: string] {
-  let ca = $"($base)/ca"
-  let ca_key = $"($ca)/ca.key"
-  let ca_crt = $"($ca)/ca.crt"
-  if not ([$ca_key $ca_crt] | path exists | all {}) {
-    print 'error: ca keys not fount'
-    exit 1
+# Create SMIME certificate
+export def sm [--email(-e): string  --pass(-p): string] {
+  if $email == null {
+    error make {msg: "required flag --email"}
+  }
+  if $pass == null {
+    error make {msg: "required flag --pass"}
+  }
+  if ($pass == "") {
+    error make {msg: "password is empty"}
+  }
+    
+  let ca = pts $conf.ca
+  if not ([$ca.key $ca.crt] | path exists | all {}) {
+    error make {msg: "ca not found"}
   }
   
-  let smime = $"($base)/smime"
-  mkdir $smime
-  let smime_cnf = $"($smime)/smime.cnf"
-  let smime_key = $"($smime)/smime.key"
-  let smime_csr = $"($smime)/smime.csr"
-  let smime_crt = $"($smime)/smime.crt"
-  let smime_pfx = $"($smime)/smime.p12"
-   
+  let sm = pts $conf.sm -c
 
-  let cnf = $"
+  let tpl = $"
     [ req ]
     default_md = sha256
     default_days       = 3650
@@ -139,26 +120,22 @@ def smime [base: string email: string  pass?: string] {
     extendedKeyUsage = emailProtection
     nsCertType = email
   "
-  $cnf | save -f $smime_cnf
+  $tpl | save -f $sm.cnf
   
-  mut opt = []
-  if ($pass != null) and ($pass != "") {
-    $opt = [-passout pass:($pass)]
-  } else {
-    $opt = [-nodes]
-  }
-
   # Create CSR
-  openssl genpkey -algorithm RSA -out $smime_key -pkeyopt rsa_keygen_bits:4096
-  openssl req -new -key $smime_key -out $smime_csr -config $smime_cnf
+  openssl genpkey -algorithm RSA -out $sm.key -pkeyopt rsa_keygen_bits:4096
+  openssl req -new -key $sm.key -out $sm.csr -config $sm.cnf
 
-  # Sign
-  openssl x509 -req -in $smime_csr -CA $ca_crt -CAkey $ca_key -CAcreateserial -out $smime_crt -extfile $smime_cnf -extensions v3_req
+  # Sign CSR
+  openssl x509 -req -in $sm.csr -CA $ca.crt -CAkey $ca.key -CAcreateserial -out $sm.crt -extfile $sm.cnf -extensions v3_req
 
   # Export to PKCS12
-  openssl pkcs12 -export -inkey $smime_key -in $smime_crt -certfile $ca_crt -out $smime_pfx ...$opt
+  openssl pkcs12 -export -inkey $sm.key -in $sm.crt -certfile $ca.crt -out $sm.pfx -passout pass:($pass)
 
   # Verify
-  openssl x509 -in $smime_crt -purpose -noout -text
-  
+  openssl x509 -in $sm.crt -purpose -noout -text
+
+  # Clean up
+  print 'info: clean up'
+  rm $sm.cnf
 }
