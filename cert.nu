@@ -54,9 +54,8 @@ export def ca [--name(-n): string] {
     x509_extensions    = v3_ca
 
     [ dn ]
-    O  = Personal
     CN = ($name)
-    OU = ($name)
+    O = ($name)
     
 
     [ v3_ca ]
@@ -108,7 +107,6 @@ export def sm [--email(-e): string  --pass(-p): string] {
     req_extensions = v3_req
 
     [ dn ]
-    O  = Personal
     CN = ($email)
     emailAddress = ($email)
 
