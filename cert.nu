@@ -3,6 +3,8 @@ const base = 'certs'
 const conf = {
   ca: ca
   sm: sm
+  cad: 3650
+  smd: 730
   key: key.pem
   crt: crt.pem
   csr: csr.pem
@@ -10,8 +12,8 @@ const conf = {
 }
 
 # Create paths
-def pts [stem: string -c] {
-  let dir = [$env.home $base $stem] | path join
+def pts [stem: list<string> -c] {
+  let dir = [$env.home $base ...$stem] | path join
   
   if $c {
     try {
@@ -37,7 +39,7 @@ export def ca [--name(-n): string] {
     error make {msg: "required flag --name"}
   }
   
-  let ca = pts $conf.ca -c
+  let ca = pts [$conf.ca] -c
 
   let tpl = $"
     [ req ]
@@ -69,7 +71,7 @@ export def ca [--name(-n): string] {
 
   # Create CA
   openssl genpkey -algorithm RSA -out $ca.key -pkeyopt rsa_keygen_bits:4096
-  openssl req -x509 -new -days 3650 -key $ca.key -out $ca.crt -config $ca.cnf -extensions v3_ca
+  openssl req -x509 -new -days $conf.cad -key $ca.key -out $ca.crt -config $ca.cnf -extensions v3_ca
 
   # Clean up
   rm $ca.cnf
@@ -86,13 +88,13 @@ export def sm [--email(-e): string  --pass(-p): string] {
   if ($pass == "") {
     error make {msg: "password is empty"}
   }
-    
-  let ca = pts $conf.ca
+
+  let ca = pts [$conf.ca]
   if not ([$ca.key $ca.crt] | path exists | all {}) {
     error make {msg: "ca not found"}
   }
   
-  let sm = pts $conf.sm -c
+  let sm = pts [$conf.sm $email (date now | format date "%y%m%d%H%M%S")] -c
 
   let tpl = $"
     [ req ]
@@ -125,7 +127,7 @@ export def sm [--email(-e): string  --pass(-p): string] {
   openssl req -new -key $sm.key -out $sm.csr -config $sm.cnf
 
   # Sign CSR
-  openssl x509 -req -days 730 -in $sm.csr -CA $ca.crt -CAkey $ca.key -CAcreateserial -out $sm.crt -extfile $sm.cnf -extensions v3_req
+  openssl x509 -req -days $conf.smd -in $sm.csr -CA $ca.crt -CAkey $ca.key -CAcreateserial -out $sm.crt -extfile $sm.cnf -extensions v3_req
 
   # Export to PKCS12
   openssl pkcs12 -export -inkey $sm.key -in $sm.crt -certfile $ca.crt -out $sm.pfx -passout pass:($pass)
@@ -134,6 +136,5 @@ export def sm [--email(-e): string  --pass(-p): string] {
   openssl x509 -in $sm.crt -purpose -noout -text
 
   # Clean up
-  print 'info: clean up'
   rm $sm.cnf
 }
