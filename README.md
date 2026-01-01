@@ -2,6 +2,4 @@
 
 ## Nushell helper snippets
 
-### certs.nu
-
-Create self-signed SMIME certificate
+cert.nu - self-signed SMIME certificate crates.nu - containers utils.nu - utilities
