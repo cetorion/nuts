@@ -69,7 +69,7 @@ export def ca [--name(-n): string] {
 
   # Create CA
   openssl genpkey -algorithm RSA -out $ca.key -pkeyopt rsa_keygen_bits:4096
-  openssl req -x509 -new -key $ca.key -out $ca.crt -config $ca.cnf -extensions v3_ca
+  openssl req -x509 -new -days 3650 -key $ca.key -out $ca.crt -config $ca.cnf -extensions v3_ca
 
   # Clean up
   rm $ca.cnf
@@ -125,7 +125,7 @@ export def sm [--email(-e): string  --pass(-p): string] {
   openssl req -new -key $sm.key -out $sm.csr -config $sm.cnf
 
   # Sign CSR
-  openssl x509 -req -in $sm.csr -CA $ca.crt -CAkey $ca.key -CAcreateserial -out $sm.crt -extfile $sm.cnf -extensions v3_req
+  openssl x509 -req -days 730 -in $sm.csr -CA $ca.crt -CAkey $ca.key -CAcreateserial -out $sm.crt -extfile $sm.cnf -extensions v3_req
 
   # Export to PKCS12
   openssl pkcs12 -export -inkey $sm.key -in $sm.crt -certfile $ca.crt -out $sm.pfx -passout pass:($pass)
